@@ -25,7 +25,7 @@ object TextNormalizer {
             .replace("\u000C", "\n\n")
             .replace(INVISIBLE, "")
             .replace("\t", "    ")
-        text = toHalfWidthAlnum(text)
+        text = toHalfWidthAlnum(SymbolFix.fix(text))
 
         val lines = text.split('\n').map { line ->
             var l = line.trimEnd()

@@ -14,6 +14,7 @@ import com.orihami.nagareyomi.core.DocumentParser
 import com.orihami.nagareyomi.core.Pacing
 import com.orihami.nagareyomi.core.ParsedDocument
 import com.orihami.nagareyomi.core.ReaderNavigator
+import com.orihami.nagareyomi.core.TextNormalizer
 import com.orihami.nagareyomi.data.DocumentStore
 import com.orihami.nagareyomi.data.ImportException
 import com.orihami.nagareyomi.data.Importers
@@ -289,7 +290,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     mime.startsWith("image/") -> {
                         draft = draft.copy(source = "image", message = "文字を読み取っています…")
-                        val text = importers.imageOcr(uri)
+                        val text = TextNormalizer.normalize(importers.imageOcr(uri))
                         draft = draft.copy(
                             text = text,
                             busy = false,
@@ -297,7 +298,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }
                     else -> {
-                        val text = importers.textFile(uri)
+                        val text = TextNormalizer.normalize(importers.textFile(uri))
                         draft = draft.copy(source = "file", text = text, busy = false, message = null)
                     }
                 }
@@ -315,7 +316,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         draft = draft.copy(pageFrom = f, pageTo = t, busy = true, message = "PDFから文章を取り出しています…", pdfNeedsOcr = false)
         viewModelScope.launch {
             try {
-                val text = importers.pdfText(uri, f, t)
+                val text = TextNormalizer.normalize(importers.pdfText(uri, f, t))
                 val noText = text.count { !it.isWhitespace() } < 20 * (t - f + 1).coerceAtMost(3)
                 draft = draft.copy(
                     text = text.trim(),
@@ -343,7 +344,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val text = importers.pdfOcr(uri, f, t) { page ->
                     viewModelScope.launch(Dispatchers.Main) { draft = draft.copy(message = "${page}ページ目を文字認識しています…（${f}〜${t}）") }
                 }
-                draft = draft.copy(text = text, busy = false, pdfNeedsOcr = false, message = "文字認識の結果です。誤りがあればここで直せます。")
+                draft = draft.copy(text = TextNormalizer.normalize(text), busy = false, pdfNeedsOcr = false, message = "文字認識の結果です。誤りがあればここで直せます。")
             } catch (e: Exception) {
                 draft = draft.copy(busy = false, message = errorMessage(e))
             }

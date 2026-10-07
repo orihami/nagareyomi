@@ -334,3 +334,31 @@ class FragmentTest {
         assertFalse(LineClassifier.looksLikeFragment("See you."))
     }
 }
+
+class SymbolFixTest {
+    @Test
+    fun wordSymbolFontCharactersBecomeRealSymbols() {
+        // σ, ±, Σ and ρ as Word writes them with the Symbol font (private-use area).
+        assertEquals("標準偏差σ = 1.2 ± 0.3, Σri, ρ", SymbolFix.fix("標準偏差 = 1.2  0.3, ri, "))
+    }
+
+    @Test
+    fun bracketPiecesAndUnknownPrivateUseAreDropped() {
+        assertEquals("n n ", SymbolFix.fix("n n "))
+    }
+
+    @Test
+    fun equationEditorLettersBecomePlain() {
+        // 𝑚 (U+1D45A), 𝑘 (U+1D458), 𝜎 (U+1D70E) and the fraction slash.
+        assertEquals("|dm m/ | 2|dk k/ | σ", SymbolFix.fix("|dm 𝑚⁄ | 2|dk 𝑘⁄ | 𝜎"))
+    }
+
+    @Test
+    fun normalizeAppliesTheFixAndIsStable() {
+        val raw = "標準偏差（standard deviation） = {Σri 2 /(N-1) }1/2\n2 31\n1 n\n \nn n"
+        val once = TextNormalizer.normalize(raw)
+        assertTrue(once, once.contains("deviation）σ ="))
+        assertTrue(once.none { it in ''..'' })
+        assertEquals(once, TextNormalizer.normalize(once))
+    }
+}
