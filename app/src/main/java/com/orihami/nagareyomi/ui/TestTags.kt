@@ -1,0 +1,35 @@
+package com.orihami.nagareyomi.ui
+
+/** Test tags used by the Compose UI tests. */
+object TestTags {
+    const val LIBRARY_LIST = "library_list"
+    const val IMPORT_PASTE = "import_paste"
+    const val IMPORT_FILE = "import_file"
+    const val IMPORT_IMAGE = "import_image"
+    const val IMPORT_CAMERA = "import_camera"
+    const val IMPORT_TYPE = "import_type"
+    const val DRAFT_TEXT = "draft_text"
+    const val DRAFT_TITLE = "draft_title"
+    const val DRAFT_READ = "draft_read"
+    const val CHUNK_TEXT = "chunk_text"
+    const val FLOW_AREA = "flow_area"
+    const val STOP_BLOCK = "stop_block"
+    const val STOP_CONTINUE = "stop_continue"
+    const val PLAY_PAUSE = "play_pause"
+    const val PREV_CHUNK = "prev_chunk"
+    const val NEXT_CHUNK = "next_chunk"
+    const val PREV_SENTENCE = "prev_sentence"
+    const val NEXT_SENTENCE = "next_sentence"
+    const val MODE_FLOW = "mode_flow"
+    const val MODE_TEXT = "mode_text"
+    const val TEXT_LIST = "text_list"
+    const val READ_FROM_HERE = "read_from_here"
+    const val SPEED_LABEL = "speed_label"
+    const val SPEED_UP = "speed_up"
+    const val SPEED_DOWN = "speed_down"
+    const val CONTEXT_PANEL = "context_panel"
+    const val END_PANEL = "end_panel"
+
+    fun doc(id: String) = "doc_$id"
+    fun block(index: Int) = "block_$index"
+}

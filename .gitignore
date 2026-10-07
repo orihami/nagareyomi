@@ -1,0 +1,24 @@
+*.iml
+.gradle
+local.properties
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.hprof
+.navigation/
+
+# Keystore files (never commit real signing keys)
+*.jks
+*.keystore
+
+# Gradle wrapper distribution cache (never commit downloaded distributions)
+gradle/wrapper/dists/
+/app/build
+.kotlin/
