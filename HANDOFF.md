@@ -2,20 +2,20 @@
 
 > 作業を始める前に `git pull` してこのファイルを読む。区切りごと・終了時に更新して push する（ルールは CLAUDE.md 0章）。
 
-- **最終更新**: 2026-10-07 21:55（日本時間）
+- **最終更新**: 2026-10-07 22:12（日本時間）
 - **作業場所**: GitHub（クラウドのClaude Code）
 
 ## 現在の状態
 
 - テンプレート `orihami/Claudee` の検証用ブランチ（PR #2、マージしない）で開発・CI検証した内容を、このリポジトリの `main` に初回コミットとして移した
-- **最新リリース: v0.1.1**（versionCode 2）— https://github.com/orihami/nagareyomi/releases/tag/v0.1.1 に `app-release.apk`（約16.6MB、デバッグ鍵署名）が付いていることを確認済み。commit `748dd06` で Android CI 3ジョブ成功 → auto-release 成功（2026-10-07 17:05 日本時間）
-- v0.1.0（初版）も公開済み
+- **最新リリース: v0.1.2**（versionCode 3）— https://github.com/orihami/nagareyomi/releases/tag/v0.1.2 （APK直接: https://github.com/orihami/nagareyomi/releases/download/v0.1.2/app-release.apk ）。commit `baa291f` で Android CI 3ジョブ成功 → auto-release 成功（2026-10-07 21:58 日本時間）
+- v0.1.1, v0.1.0 も公開済み
 - このリポジトリの初回 Android CI（commit `3dcf431`）: 3ジョブすべて成功。続く `auto-release.yml` も成功し `v0.1.0` タグを作成・公開（2026-10-07 16:09 日本時間）
 - テンプレート側での検証結果（commit `8026429`）: Android CI 3ジョブ成功。エミュレータUIテスト8件（ReaderFlowUiTest 6件、ImportersTest 2件＝端末上で生成したPDFからの日本語抽出・Shift_JIS読み込み）成功
 
 ## 進行中のこと
 
-- v0.1.2（PDFの文字化け対策・取り込み画面での整形）の Android CI と自動リリース待ち
+- なし（v0.1.2 で □ が減ったか、ユーザーの実機確認待ち）
 
 ## 次にやること
 
