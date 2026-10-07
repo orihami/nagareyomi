@@ -242,3 +242,95 @@ class DocMetaTest {
         assertEquals("無題", DocMeta.titleFrom("  \n "))
     }
 }
+
+/** Text as it comes out of a real lecture-handout PDF (pdfbox), with equations scattered over many lines. */
+class PdfHandoutTest {
+    private val raw = """
+        1
+        
+        物理学実験 実習（最小二乗法と誤差論）
+        学籍番号          氏名
+        １． 実験授業で習得できる能力
+        (1) 精度と測定器械の選択
+        (2) 精度・誤差
+        2
+        ◇ 実験授業を通して習得できる能力
+        何のために実験をするのか
+        ① 測定しようとする物理量の真の値は、多くのけた数をもった数値で表せます。残念ですが、
+        多くのけた数を読み取れる測定器械を手に入れることはできません。（誤差・精度の認識）
+        ② 測定器械には読み取れる最小限度が存在します。（器械の限界）
+        ③ 測定しようとする物理量 X（測定対象）に対して、使用する測定器械の最小目盛を dX とす
+        れば、測定器械の精度は、|dX/X |×100%で表せます。
+        □ N 回の測定によって、x1, x2,…, xNの測定値が得られました。この測定データの精度を表す以下の量を知っ
+        ておくと、レポートをまとめるのに便利です。
+        標準偏差（標準誤差）（standard deviation）        = {Σri 2 /(N-1) }1/2
+        確率誤差（probable error）p   p = 0.6745
+        □1  物体の長さのような物理量 y を n 回測定して，測定値 y1，y2，y3，・・・，yn が得られたとする。こ
+        のような場合，平均値 y は次のように表される。
+        2 31
+        1
+        1 n
+        n
+        i
+        
+        y y y y
+        y y
+        n n
+        真値に最も近い値を a とし，測定値 yi との差であ
+        る(yi-a)の 2 乗した量の和 E について考える。
+        x (N) y (cm)
+        5 1.69
+        10 3.48
+    """.trimIndent()
+
+    private val text = TextNormalizer.normalize(raw)
+    private val doc = DocumentParser.parse(text)
+    private fun kindOf(prefix: String) = doc.blocks.first { doc.blockText(it).startsWith(prefix) }.kind
+
+    @Test
+    fun scatteredEquationBecomesOneStopBlock() {
+        val stops = doc.chunks.filter { it.isStop }
+        assertTrue(stops.toString(), stops.any { it.text.startsWith("2 31") && it.text.contains("y y y y") && it.text.contains("n n") })
+        // No flashed chunk is made of equation debris.
+        assertTrue(doc.chunks.filter { !it.isStop }.none { it.text.contains("y y y") || it.text == "n" })
+    }
+
+    @Test
+    fun tableBecomesAStopBlock() {
+        assertTrue(doc.chunks.any { it.isStop && it.text.contains("x (N) y (cm)") && it.text.contains("10 3.48") })
+    }
+
+    @Test
+    fun shortLinesAreNotGluedTogether() {
+        assertTrue(text.lines().toString(), "学籍番号 氏名" in text.lines())
+        assertEquals(BlockKind.HEADING, kindOf("1． 実験授業"))
+        assertTrue(text.lines().any { it.startsWith("確率誤差") })
+    }
+
+    @Test
+    fun wrappedLinesAreJoined() {
+        assertTrue(text.contains("多くのけた数をもった数値で表せます。残念ですが、多くのけた数を読み取れる"))
+        assertTrue(text.contains("最小目盛を dX とすれば、"))
+        assertTrue(text.contains("差である(yi-a)の"))
+    }
+
+    @Test
+    fun bulletsAndHeadings() {
+        assertEquals(BlockKind.LIST_ITEM, kindOf("□ N 回"))
+        assertEquals(BlockKind.LIST_ITEM, kindOf("(1) 精度"))
+        assertEquals(BlockKind.HEADING, kindOf("◇ 実験授業"))
+        assertTrue("page numbers removed", text.lines().none { it.trim() == "2" })
+    }
+}
+
+class FragmentTest {
+    @Test
+    fun fragmentsAreNotProse() {
+        assertTrue(LineClassifier.looksLikeFragment("y y y y"))
+        assertTrue(LineClassifier.looksLikeFragment("x (N) y (cm)"))
+        assertTrue(LineClassifier.looksLikeFragment("5 1.69"))
+        assertFalse(LineClassifier.looksLikeFragment("Introduction"))
+        assertFalse(LineClassifier.looksLikeFragment("（検 証）"))
+        assertFalse(LineClassifier.looksLikeFragment("See you."))
+    }
+}

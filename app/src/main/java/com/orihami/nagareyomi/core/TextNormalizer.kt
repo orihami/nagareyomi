@@ -36,10 +36,14 @@ object TextNormalizer {
             removeLetterSpacing(l)
         }.filterNot { PAGE_NUMBER.matches(it) && it.isNotBlank() }
 
+        val wrapWidth = wrapWidth(lines)
         val out = StringBuilder()
         var inFence = false
         var previous: String? = null
+        var lastLine = ""
         for (line in lines) {
+            val prevLine = lastLine
+            lastLine = line
             val kind = LineClassifier.classify(line)
             if (kind == LineKind.FENCE) inFence = !inFence
             val prev = previous
@@ -47,7 +51,8 @@ object TextNormalizer {
                 prev == null -> out.append(line)
                 line.isBlank() -> if (prev.isBlank()) continue else out.append('\n')
                 prev.isBlank() -> out.append('\n').append(line)
-                !inFence && kind != LineKind.FENCE && shouldJoin(prev, line) -> {
+                !inFence && kind != LineKind.FENCE && shouldJoin(prev, line) &&
+                    (wrapWidth == null || displayWidth(prevLine) >= wrapWidth * 0.75 || continuesWord(line)) -> {
                     if (prev.endsWith("-") && prev.length >= 2 && prev[prev.length - 2].isLetter() &&
                         line.first().isLowerCase()
                     ) {
@@ -67,6 +72,28 @@ object TextNormalizer {
             .replace(Regex("\n{3,}"), "\n\n")
             .trim('\n', ' ')
     }
+
+    /**
+     * Width of a full line in hard-wrapped text (PDF / OCR), or null when the
+     * text is not hard-wrapped. A line much shorter than this ended on purpose
+     * (a heading, a definition, a blank form) and must not be joined to the next.
+     */
+    private fun wrapWidth(lines: List<String>): Int? {
+        val widths = lines.filter { LineClassifier.classify(it) == LineKind.TEXT || LineClassifier.classify(it) == LineKind.LIST_ITEM }
+            .map { displayWidth(it) }
+            .sorted()
+        if (widths.size < 6) return null
+        return widths[(widths.size * 0.8).toInt().coerceAtMost(widths.lastIndex)]
+    }
+
+    /** A line starting with hiragana or a comma continues the previous one ("差であ" / "る(yi-a)の"). */
+    private fun continuesWord(line: String): Boolean {
+        val c = line.firstOrNull() ?: return false
+        return c in '\u3041'..'\u309F' || c in "、，,。．)）」』"
+    }
+
+    /** Columns on a printed line: Japanese characters are twice as wide as Latin ones. */
+    private fun displayWidth(s: String): Int = s.sumOf { if (Chars.isCjk(it) || it.code >= 0x2000) 2 else 1 as Int }
 
     /**
      * PDFs often come out as "電 磁 気 学" with a space between every kanji.

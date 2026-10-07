@@ -12,9 +12,11 @@ object LineClassifier {
 
     private val MARKDOWN_HEADING = Regex("^#{1,6}\\s+\\S.*")
     private val CHAPTER_HEADING = Regex("^第[0-9０-９一二三四五六七八九十百]+[章節項部回講].{0,40}$")
-    private val NUMBERED_HEADING = Regex("^([0-9]+(\\.[0-9]+)+\\.?|[0-9]+\\.)\\s*\\S.{0,38}$")
-    private val MARK_HEADING = Regex("^[■□◆◇●▼▶【].{1,40}$")
-    private val BULLET = Regex("^\\s*([-*・•●○▪]|\\(?[0-9]{1,2}\\)|[①-⑳])\\s*\\S.*")
+    private val NUMBERED_HEADING = Regex("^([0-9]+(\\.[0-9]+)+\\.?|[0-9]+[.．])\\s*\\S.{0,38}$")
+    private val MARK_HEADING = Regex("^[■◆◇●▼▶【].{1,40}$")
+    private val BULLET = Regex("^\\s*([-*・•●○▪□]|\\(?[0-9]{1,2}\\)|（[0-9]{1,2}）|[①-⑳])\\s*\\S.*")
+    private val NUMBER = Regex("[-+−]?[0-9]+([.,][0-9]+)*%?")
+    private val LONG_WORD = Regex("[A-Za-z]{4,}")
     private val LATEX_COMMAND = Regex("\\\\(frac|int|sum|prod|sqrt|partial|nabla|cdot|times|left|right|begin|end|mathrm|mathbf|alpha|beta|omega|theta|pi|infty|lim|vec|hat|dot|oint)\\b")
     private val CODE_START = Regex("^(import |package |def |class |public |private |fun |val |var |for ?\\(|if ?\\(|while ?\\(|return\\b|#include|//|/\\*|\\}|\\{)")
     private val LATIN_WORD = Regex("[A-Za-z]{3,}")
@@ -25,7 +27,7 @@ object LineClassifier {
         if (t.startsWith("```") || t.startsWith("~~~")) return LineKind.FENCE
         if (MARKDOWN_HEADING.matches(t)) return LineKind.HEADING
         if (looksLikeCode(line)) return LineKind.CODE
-        if (looksLikeFormula(t)) return LineKind.FORMULA
+        if (looksLikeFormula(t) || looksLikeFragment(t)) return LineKind.FORMULA
         if (CHAPTER_HEADING.matches(t)) return LineKind.HEADING
         if (MARK_HEADING.matches(t) && !endsSentence(t)) return LineKind.HEADING
         if (NUMBERED_HEADING.matches(t) && !endsSentence(t) && Chars.weight(t) <= 30) return LineKind.HEADING
@@ -53,6 +55,18 @@ object LineClassifier {
         if ((relation || bigOperator) && cjk <= 2 && longWords <= 1) return true
         // Dense symbol lines such as "(a + b)(a − b)".
         return cjk == 0 && longWords == 0 && operators >= 2 && operators.toDouble() / nonSpace >= 0.2
+    }
+
+    /**
+     * Pieces of an equation or table that a PDF extractor scattered over many
+     * lines: "2 31", "n", "i", "y y y y", "x y x2 xy", "5 1.69". Flashing these
+     * as text is meaningless, so they are grouped into a stop block instead.
+     */
+    fun looksLikeFragment(t: String): Boolean {
+        if (t.count { Chars.isCjk(it) } > 1 || endsSentence(t)) return false
+        if (LONG_WORD.containsMatchIn(t)) return false
+        val tokens = t.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        return tokens.isNotEmpty() && tokens.all { it.length <= 6 || NUMBER.matches(it) }
     }
 
     fun looksLikeCode(line: String): Boolean {

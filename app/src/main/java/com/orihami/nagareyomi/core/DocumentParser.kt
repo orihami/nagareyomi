@@ -109,7 +109,8 @@ object DocumentParser {
                 val trimmedStart = lineStart + (line.length - line.trimStart().length)
                 val trimmedEnd = lineStart + line.trimEnd().length
                 when (kind) {
-                    LineKind.BLANK -> flush()
+                    // An equation scattered over several lines may have blank lines in between.
+                    LineKind.BLANK -> if (current?.kind != BlockKind.FORMULA) flush()
                     LineKind.FENCE -> {
                         flush()
                         fenceStart = lineStart

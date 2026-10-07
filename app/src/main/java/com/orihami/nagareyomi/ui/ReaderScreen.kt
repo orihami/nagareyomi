@@ -286,10 +286,19 @@ private fun StopBlock(text: String, isCode: Boolean, onContinue: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            if (isCode) "コード — 止まって確認" else "数式 — 止まって確認",
+            if (isCode) "コード — 止まって確認" else "数式・表 — 止まって確認",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // Equations taken from a PDF often arrive scattered over many short lines.
+        if (!isCode && text.count { it == '\n' } >= 3) {
+            Text(
+                "PDFの数式や表は、崩れて取り出されることがあります。元の資料と見比べてください。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
             Text(
                 text,
