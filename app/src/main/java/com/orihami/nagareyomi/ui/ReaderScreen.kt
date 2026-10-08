@@ -253,7 +253,8 @@ private fun FlowView(vm: MainViewModel, session: ReaderSession) {
             }
         }
         val contextVisible = !vm.playing || settings.contextWhilePlaying
-        ContextPanel(
+        // A stop block needs the room (and has no surrounding sentence to show).
+        if (chunk?.isStop != true) ContextPanel(
             session = session,
             index = vm.index,
             modifier = Modifier.alpha(
@@ -297,12 +298,14 @@ private fun ChunkDisplay(text: String, isHeading: Boolean, fontSizeSp: Int) {
 private fun StopBlock(text: String, kind: BlockKind, vm: MainViewModel, onContinue: () -> Unit) {
     val isCode = kind == BlockKind.CODE
     val marker = Markers.keyOf(text)
+    // Fill the flow area so a tall picture shrinks instead of pushing the button off screen.
     Column(
         Modifier
-            .padding(horizontal = 16.dp)
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .testTag(TestTags.STOP_BLOCK),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
     ) {
         Text(
             when {
@@ -315,7 +318,7 @@ private fun StopBlock(text: String, kind: BlockKind, vm: MainViewModel, onContin
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (marker != null) {
-            RegionImage(marker, vm, maxHeight = 360.dp)
+            RegionImage(marker, vm, maxHeight = 600.dp, modifier = Modifier.weight(1f, fill = false))
         } else {
             // Equations taken from a PDF often arrive scattered over many short lines.
             if (!isCode && text.count { it == '\n' } >= 3) {
@@ -326,7 +329,7 @@ private fun StopBlock(text: String, kind: BlockKind, vm: MainViewModel, onContin
                     textAlign = TextAlign.Center,
                 )
             }
-            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f, fill = false)) {
                 Text(
                     text,
                     fontFamily = if (isCode) FontFamily.Monospace else FontFamily.Serif,

@@ -2,6 +2,7 @@ package com.orihami.nagareyomi
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
@@ -53,7 +54,7 @@ class PdfFigureUiTest {
         }
         saveScreenshot("07_equation_image.png")
         rule.onNodeWithText("数式 — 止まって確認（タップで拡大）", useUnmergedTree = true).assertExists()
-        rule.onNodeWithTag(TestTags.STOP_CONTINUE).performClick()
+        rule.onNodeWithTag(TestTags.STOP_CONTINUE).assertIsDisplayed().performClick()
         // The next part is the picture: the reader stops on it too and shows it.
         rule.waitUntil(5_000) {
             rule.onAllNodes(hasText("図 — 止まって確認（タップで拡大）"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
