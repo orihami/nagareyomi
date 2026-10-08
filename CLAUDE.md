@@ -152,12 +152,16 @@ app/src/main/java/com/orihami/nagareyomi/
 │   ├── DocumentParser.kt    # テキスト → ブロック/文/まとまり(元テキストのオフセット付き)
 │   ├── Pacing.kt            # 表示時間(字/分、間、再開直後のゆっくり表示)
 │   ├── ReaderNavigator.kt   # 前の文/次の文/再開位置
+│   ├── Layout.kt            # PDFの行・画像の位置から〔式〕〔図〕の印と切り抜き範囲を作る(LayoutAssembler)
+│   ├── SymbolFix.kt         # Word製PDFのSymbolフォント私用文字(U+F0xx)・数式斜体文字を通常の文字へ
 │   ├── DocMeta.kt, Document.kt, CharClass.kt, SampleText.kt
-├── data/                    # 保存(DocumentStore/SettingsStore)、取り込み(Importers: PDF=pdfbox-android, OCR=ML Kit日本語)
+├── data/                    # 保存(DocumentStore/SettingsStore、元PDFと切り抜き範囲も保存)、取り込み(Importers: PDF=pdfbox-android, OCR=ML Kit日本語)
+│                            #   PdfLayout.kt(位置付きの文字抽出・画像検出)、RegionRenderer.kt(PDFの一部を画像に)
 └── ui/                      # 一覧・読み込み・リーダー画面、テーマ、TestTags
 
 app/src/test/.../core/       # ユニットテスト
-app/src/androidTest/.../     # ReaderFlowUiTest(画面操作)、ImportersTest(端末上で作ったPDFからの抽出)
+app/src/androidTest/.../     # ReaderFlowUiTest(画面操作)、ImportersTest(端末上で作ったPDFからの抽出)、
+                             # PdfLayoutTest(〔式〕〔図〕と切り抜き)、PdfFigureUiTest(数式・図の画像表示)
 ```
 
 ## 6. 運用上のルール

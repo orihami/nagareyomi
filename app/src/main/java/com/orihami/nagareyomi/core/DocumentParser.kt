@@ -123,7 +123,15 @@ object DocumentParser {
                         flush()
                         current = RawBlock(BlockKind.LIST_ITEM, trimmedStart, trimmedEnd)
                     }
-                    LineKind.FORMULA, LineKind.CODE -> {
+                    // A marker stands for one picture / equation of the original PDF: its own block.
+                    LineKind.FIGURE -> {
+                        flush()
+                        result += RawBlock(BlockKind.FIGURE, trimmedStart, trimmedEnd)
+                    }
+                    LineKind.FORMULA, LineKind.CODE -> if (Markers.kindOf(line) != null) {
+                        flush()
+                        result += RawBlock(BlockKind.FORMULA, trimmedStart, trimmedEnd)
+                    } else {
                         val bk = if (kind == LineKind.FORMULA) BlockKind.FORMULA else BlockKind.CODE
                         val c = current
                         current = if (c != null && c.kind == bk) {

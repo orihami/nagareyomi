@@ -2,9 +2,12 @@ package com.orihami.nagareyomi.data
 
 import android.content.Context
 import com.orihami.nagareyomi.core.DocMeta
+import com.orihami.nagareyomi.core.Markers
+import com.orihami.nagareyomi.core.PageRect
 import com.orihami.nagareyomi.core.SampleText
 import com.orihami.nagareyomi.core.TextNormalizer
 import java.io.File
+import java.io.InputStream
 import java.util.UUID
 
 /** Saved documents: `files/docs/<id>.txt` (text) and `<id>.meta` (title, position...). */
@@ -48,7 +51,22 @@ class DocumentStore(context: Context) {
     fun delete(id: String) {
         File(dir, "$id.txt").delete()
         File(dir, "$id.meta").delete()
+        File(dir, "$id.pdf").delete()
+        File(dir, "$id.regions").delete()
     }
+
+    /** Keeps the original PDF so equations and figures can be shown as images of it. */
+    fun savePdf(id: String, input: InputStream, regions: Map<String, PageRect>) {
+        val tmp = File(dir, "$id.pdf.tmp")
+        tmp.outputStream().use { input.copyTo(it) }
+        tmp.renameTo(pdfFile(id))
+        File(dir, "$id.regions").writeText(Markers.encodeRegions(regions))
+    }
+
+    fun pdfFile(id: String): File = File(dir, "$id.pdf")
+
+    fun regions(id: String): Map<String, PageRect> =
+        File(dir, "$id.regions").takeIf { it.exists() }?.let { Markers.decodeRegions(it.readText()) } ?: emptyMap()
 
     /** Adds the how-to sample once, on the very first launch. */
     fun ensureSample() {

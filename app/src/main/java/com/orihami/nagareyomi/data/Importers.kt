@@ -12,10 +12,12 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.orihami.nagareyomi.core.LayoutAssembler
+import com.orihami.nagareyomi.core.PageRect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
@@ -24,6 +26,17 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class ImportException(message: String) : Exception(message)
+
+class PdfExtraction(
+    val text: String,
+    /** Where each 〔式〕/〔図〕 marker of [text] is on the original pages. */
+    val regions: Map<String, PageRect>,
+    /** Pages that had (almost) no text and were read by OCR. */
+    val ocrPages: List<Int>,
+    /** Picture-only pages that could not be read because OCR failed. */
+    val imagePagesWithoutText: List<Int>,
+    val ocrProblem: String?,
+)
 
 /** Gets text out of PDFs, images (on-device OCR) and text files. */
 class Importers(private val context: Context) {
@@ -48,35 +61,62 @@ class Importers(private val context: Context) {
         input.use { PDDocument.load(it).use { doc -> doc.numberOfPages } }
     }
 
-    /** Text layer of pages [from]..[to] (1-based, inclusive). Empty for scanned PDFs. */
-    suspend fun pdfText(uri: Uri, from: Int, to: Int): String = withContext(Dispatchers.IO) {
-        PDFBoxResourceLoader.init(context.applicationContext)
-        val input = resolver.openInputStream(uri) ?: throw ImportException("PDFを開けませんでした")
-        input.use {
-            PDDocument.load(it).use { doc ->
-                val stripper = PDFTextStripper().apply {
-                    startPage = from
-                    endPage = to
-                    lineSeparator = "\n"
-                    pageEnd = "\n"
+    /**
+     * Text of pages [from]..[to] (1-based, inclusive). Equations and large
+     * pictures become 〔式〕/〔図〕 markers whose places on the page are in
+     * [PdfExtraction.regions]; pages that are only pictures are read by OCR.
+     */
+    suspend fun pdfExtract(uri: Uri, from: Int, to: Int, onProgress: (String) -> Unit): PdfExtraction {
+        val assembler = LayoutAssembler()
+        withContext(Dispatchers.IO) {
+            PDFBoxResourceLoader.init(context.applicationContext)
+            val input = resolver.openInputStream(uri) ?: throw ImportException("PDFを開けませんでした")
+            input.use {
+                PDDocument.load(it).use { doc ->
+                    LayoutStripper(assembler).apply {
+                        startPage = from
+                        endPage = to
+                    }.getText(doc)
                 }
-                stripper.getText(doc)
             }
         }
+        val replacements = mutableMapOf<Int, String>()
+        var ocrProblem: String? = null
+        if (assembler.sparsePages.isNotEmpty()) {
+            try {
+                replacements += ocrPages(uri, assembler.sparsePages) { p ->
+                    onProgress("画像のページを文字認識しています…（${p}ページ目）")
+                }
+            } catch (e: ImportException) {
+                ocrProblem = e.message
+            }
+        }
+        return PdfExtraction(
+            text = assembler.text(replacements),
+            regions = assembler.regions(replacements),
+            ocrPages = replacements.keys.sorted(),
+            imagePagesWithoutText = if (ocrProblem != null) assembler.sparsePages else emptyList(),
+            ocrProblem = ocrProblem,
+        )
     }
 
-    /** For scanned PDFs: renders each page and runs OCR on it. */
-    suspend fun pdfOcr(uri: Uri, from: Int, to: Int, onPage: (Int) -> Unit): String {
-        val pages = mutableListOf<String>()
+    /** Reads every page of [from]..[to] by OCR (for scanned PDFs or a broken text layer). */
+    suspend fun pdfOcr(uri: Uri, from: Int, to: Int, onPage: (Int) -> Unit): String =
+        ocrPages(uri, (from..to).toList(), onPage).toSortedMap().values.joinToString("\n\n")
+
+    /** Renders the given pages (1-based) and runs OCR on each. */
+    private suspend fun ocrPages(uri: Uri, pages: List<Int>, onPage: (Int) -> Unit): Map<Int, String> {
+        val result = mutableMapOf<Int, String>()
         val fd = withContext(Dispatchers.IO) { resolver.openFileDescriptor(uri, "r") }
             ?: throw ImportException("PDFを開けませんでした")
         fd.use {
             val renderer = withContext(Dispatchers.IO) { PdfRenderer(fd) }
             renderer.use { r ->
-                for (p in (from - 1).coerceAtLeast(0) until to.coerceAtMost(r.pageCount)) {
-                    onPage(p + 1)
+                for (p in pages) {
+                    if (p < 1 || p > r.pageCount) continue
+                    onPage(p)
                     val bitmap = withContext(Dispatchers.IO) {
-                        r.openPage(p).use { page ->
+                        r.openPage(p - 1).use { page ->
                             val scale = (2000f / page.width).coerceIn(1f, 3f)
                             val bmp = Bitmap.createBitmap((page.width * scale).toInt(), (page.height * scale).toInt(), Bitmap.Config.ARGB_8888)
                             bmp.eraseColor(Color.WHITE)
@@ -84,12 +124,14 @@ class Importers(private val context: Context) {
                             bmp
                         }
                     }
-                    pages += recognize(InputImage.fromBitmap(bitmap, 0))
+                    // Never hang an import on OCR (e.g. while the model is still being downloaded).
+                    result[p] = withTimeoutOrNull(OCR_TIMEOUT_MS) { recognize(InputImage.fromBitmap(bitmap, 0)) }
+                        ?: throw ImportException("文字認識に時間がかかりすぎたため中止しました。")
                     bitmap.recycle()
                 }
             }
         }
-        return pages.joinToString("\n\n")
+        return result
     }
 
     suspend fun imageOcr(uri: Uri): String {
@@ -128,6 +170,8 @@ class Importers(private val context: Context) {
     }
 
     companion object {
+        private const val OCR_TIMEOUT_MS = 60_000L
+
         fun decode(bytes: ByteArray): String {
             val utf8 = Charsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)

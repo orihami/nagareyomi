@@ -1,7 +1,7 @@
 package com.orihami.nagareyomi.core
 
 /** What a single line of source text looks like. */
-enum class LineKind { BLANK, FENCE, HEADING, LIST_ITEM, FORMULA, CODE, TEXT }
+enum class LineKind { BLANK, FENCE, HEADING, LIST_ITEM, FORMULA, FIGURE, CODE, TEXT }
 
 /**
  * Recognizes headings, lists, equations and code lines. These are the
@@ -14,6 +14,7 @@ object LineClassifier {
     private val CHAPTER_HEADING = Regex("^第[0-9０-９一二三四五六七八九十百]+[章節項部回講].{0,40}$")
     private val NUMBERED_HEADING = Regex("^([0-9]+(\\.[0-9]+)+\\.?|[0-9]+[.．])\\s*\\S.{0,38}$")
     private val MARK_HEADING = Regex("^[■◆◇●▼▶【].{1,40}$")
+    private const val MAX_MARK_HEADING_WEIGHT = 26.0
     private val BULLET = Regex("^\\s*([-*・•●○▪□]|\\(?[0-9]{1,2}\\)|（[0-9]{1,2}）|[①-⑳])\\s*\\S.*")
     private val NUMBER = Regex("[-+−]?[0-9]+([.,][0-9]+)*%?")
     private val LONG_WORD = Regex("[A-Za-z]{4,}")
@@ -25,11 +26,16 @@ object LineClassifier {
         val t = line.trim()
         if (t.isEmpty()) return LineKind.BLANK
         if (t.startsWith("```") || t.startsWith("~~~")) return LineKind.FENCE
+        when (Markers.kindOf(t)) {
+            Markers.Kind.FORMULA -> return LineKind.FORMULA
+            Markers.Kind.FIGURE -> return LineKind.FIGURE
+            null -> Unit
+        }
         if (MARKDOWN_HEADING.matches(t)) return LineKind.HEADING
         if (looksLikeCode(line)) return LineKind.CODE
         if (looksLikeFormula(t) || looksLikeFragment(t)) return LineKind.FORMULA
         if (CHAPTER_HEADING.matches(t)) return LineKind.HEADING
-        if (MARK_HEADING.matches(t) && !endsSentence(t)) return LineKind.HEADING
+        if (MARK_HEADING.matches(t) && !endsSentence(t) && Chars.weight(t) <= MAX_MARK_HEADING_WEIGHT) return LineKind.HEADING
         if (NUMBERED_HEADING.matches(t) && !endsSentence(t) && Chars.weight(t) <= 30) return LineKind.HEADING
         if (BULLET.matches(line)) return LineKind.LIST_ITEM
         return LineKind.TEXT
@@ -63,7 +69,7 @@ object LineClassifier {
      * as text is meaningless, so they are grouped into a stop block instead.
      */
     fun looksLikeFragment(t: String): Boolean {
-        if (t.count { Chars.isCjk(it) } > 1 || endsSentence(t)) return false
+        if (t.count { Chars.isCjk(it) && it != '・' } > 1 || endsSentence(t)) return false
         if (LONG_WORD.containsMatchIn(t)) return false
         val tokens = t.split(Regex("\\s+")).filter { it.isNotEmpty() }
         return tokens.isNotEmpty() && tokens.all { it.length <= 6 || NUMBER.matches(it) }

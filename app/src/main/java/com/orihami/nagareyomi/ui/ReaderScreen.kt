@@ -76,6 +76,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.orihami.nagareyomi.core.Markers
 import com.orihami.nagareyomi.MainViewModel
 import com.orihami.nagareyomi.ReaderMode
 import com.orihami.nagareyomi.ReaderSession
@@ -225,7 +241,8 @@ private fun FlowView(vm: MainViewModel, session: ReaderSession) {
                 vm.finished -> EndPanel(onRestart = vm::restart, onText = { vm.showMode(ReaderMode.TEXT) })
                 chunk.isStop -> StopBlock(
                     text = chunk.text,
-                    isCode = doc.blocks[chunk.block].kind == BlockKind.CODE,
+                    kind = doc.blocks[chunk.block].kind,
+                    vm = vm,
                     onContinue = vm::continueAfterStop,
                 )
                 else -> ChunkDisplay(
@@ -277,7 +294,9 @@ private fun ChunkDisplay(text: String, isHeading: Boolean, fontSizeSp: Int) {
 }
 
 @Composable
-private fun StopBlock(text: String, isCode: Boolean, onContinue: () -> Unit) {
+private fun StopBlock(text: String, kind: BlockKind, vm: MainViewModel, onContinue: () -> Unit) {
+    val isCode = kind == BlockKind.CODE
+    val marker = Markers.keyOf(text)
     Column(
         Modifier
             .padding(horizontal = 16.dp)
@@ -286,36 +305,118 @@ private fun StopBlock(text: String, isCode: Boolean, onContinue: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            if (isCode) "コード — 止まって確認" else "数式・表 — 止まって確認",
+            when {
+                isCode -> "コード — 止まって確認"
+                kind == BlockKind.FIGURE -> "図 — 止まって確認（タップで拡大）"
+                marker != null -> "数式 — 止まって確認（タップで拡大）"
+                else -> "数式・表 — 止まって確認"
+            },
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        // Equations taken from a PDF often arrive scattered over many short lines.
-        if (!isCode && text.count { it == '\n' } >= 3) {
-            Text(
-                "PDFの数式や表は、崩れて取り出されることがあります。元の資料と見比べてください。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
-            Text(
-                text,
-                fontFamily = if (isCode) FontFamily.Monospace else FontFamily.Serif,
-                fontSize = if (isCode) 14.sp else 22.sp,
-                lineHeight = if (isCode) 20.sp else 32.sp,
-                modifier = Modifier
-                    .heightIn(max = 320.dp)
-                    .verticalScroll(rememberScrollState())
-                    .horizontalScroll(rememberScrollState())
-                    .padding(16.dp),
-            )
+        if (marker != null) {
+            RegionImage(marker, vm, maxHeight = 360.dp)
+        } else {
+            // Equations taken from a PDF often arrive scattered over many short lines.
+            if (!isCode && text.count { it == '\n' } >= 3) {
+                Text(
+                    "PDFの数式や表は、崩れて取り出されることがあります。元の資料と見比べてください。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)) {
+                Text(
+                    text,
+                    fontFamily = if (isCode) FontFamily.Monospace else FontFamily.Serif,
+                    fontSize = if (isCode) 14.sp else 22.sp,
+                    lineHeight = if (isCode) 20.sp else 32.sp,
+                    modifier = Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                        .horizontalScroll(rememberScrollState())
+                        .padding(16.dp),
+                )
+            }
         }
         Button(onClick = onContinue, modifier = Modifier.testTag(TestTags.STOP_CONTINUE)) {
             Icon(Icons.Default.PlayArrow, contentDescription = null)
             Spacer(Modifier.width(6.dp))
             Text("続きを流す")
+        }
+    }
+}
+
+/**
+ * The part of the original PDF page that a 〔式〕/〔図〕 marker stands for.
+ * Tap to see it full screen with pinch zoom.
+ */
+@Composable
+private fun RegionImage(marker: String, vm: MainViewModel, maxHeight: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    var zoomed by remember { mutableStateOf(false) }
+    BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val widthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
+        val bitmap by produceState<android.graphics.Bitmap?>(null, marker, widthPx) {
+            value = vm.regionBitmap(marker, widthPx)
+        }
+        val bmp = bitmap
+        if (bmp == null) {
+            Text(
+                "$marker（元のPDFの画像はありません）",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = marker,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .heightIn(max = maxHeight)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.White)
+                    .clickable { zoomed = true }
+                    .testTag(TestTags.REGION_IMAGE),
+            )
+            if (zoomed) ZoomDialog(bmp, marker) { zoomed = false }
+        }
+    }
+}
+
+@Composable
+private fun ZoomDialog(bitmap: android.graphics.Bitmap, description: String, onClose: () -> Unit) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        var scale by remember { mutableStateOf(1f) }
+        var offset by remember { mutableStateOf(Offset.Zero) }
+        val state = rememberTransformableState { zoom, pan, _ ->
+            scale = (scale * zoom).coerceIn(1f, 6f)
+            offset = if (scale == 1f) Offset.Zero else offset + pan
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                .transformable(state)
+                .pointerInput(Unit) { detectTapGestures(onTap = { onClose() }) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = description,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
+            )
+            Text(
+                "ピンチで拡大・タップで閉じる",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.DarkGray,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(24.dp),
+            )
         }
     }
 }
@@ -480,7 +581,18 @@ private fun TextView(vm: MainViewModel, session: ReaderSession) {
                 val raw = doc.blockText(block)
                 val tagged = Modifier.testTag(TestTags.block(i))
                 when (block.kind) {
-                    BlockKind.FORMULA, BlockKind.CODE -> Surface(
+                    BlockKind.FORMULA, BlockKind.FIGURE, BlockKind.CODE -> if (Markers.keyOf(raw) != null) {
+                        Box(
+                            tagged
+                                .fillMaxWidth()
+                                .then(
+                                    if (currentSentence?.block == i) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp)) else Modifier,
+                                )
+                                .padding(4.dp),
+                        ) {
+                            RegionImage(raw.trim(), vm, maxHeight = 480.dp)
+                        }
+                    } else Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(10.dp),
                         border = if (currentSentence?.block == i) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,

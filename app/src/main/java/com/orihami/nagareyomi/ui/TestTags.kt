@@ -29,6 +29,7 @@ object TestTags {
     const val SPEED_DOWN = "speed_down"
     const val CONTEXT_PANEL = "context_panel"
     const val END_PANEL = "end_panel"
+    const val REGION_IMAGE = "region_image"
 
     fun doc(id: String) = "doc_$id"
     fun block(index: Int) = "block_$index"

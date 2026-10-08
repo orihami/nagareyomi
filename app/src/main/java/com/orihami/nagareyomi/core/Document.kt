@@ -8,10 +8,12 @@ enum class BlockKind {
     FORMULA,
     /** Source code: shown whole and the reader stops on them. */
     CODE,
+    /** A picture of the original page (〔図〕 marker). */
+    FIGURE,
     ;
 
     /** Blocks that are not flashed but shown in full while the reader waits. */
-    val isStopBlock: Boolean get() = this == FORMULA || this == CODE
+    val isStopBlock: Boolean get() = this == FORMULA || this == CODE || this == FIGURE
 }
 
 /** One unit shown at a time. Offsets are into [ParsedDocument.text]. */

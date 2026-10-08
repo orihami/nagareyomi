@@ -15,6 +15,12 @@ import com.orihami.nagareyomi.core.Pacing
 import com.orihami.nagareyomi.core.ParsedDocument
 import com.orihami.nagareyomi.core.ReaderNavigator
 import com.orihami.nagareyomi.core.TextNormalizer
+import com.orihami.nagareyomi.core.Markers
+import com.orihami.nagareyomi.core.PageRect
+import com.orihami.nagareyomi.data.PdfExtraction
+import com.orihami.nagareyomi.data.RegionRenderer
+import android.graphics.Bitmap
+import kotlinx.coroutines.withContext
 import com.orihami.nagareyomi.data.DocumentStore
 import com.orihami.nagareyomi.data.ImportException
 import com.orihami.nagareyomi.data.Importers
@@ -44,10 +50,12 @@ data class ImportDraft(
     val pageTo: Int = 1,
     /** The PDF had no text layer, so OCR of rendered pages is offered. */
     val pdfNeedsOcr: Boolean = false,
+    /** Where the 〔式〕/〔図〕 markers of [text] are in the PDF. */
+    val regions: Map<String, PageRect> = emptyMap(),
 )
 
 /** An open document. */
-class ReaderSession(val meta: DocMeta, val doc: ParsedDocument) {
+class ReaderSession(val meta: DocMeta, val doc: ParsedDocument, val regions: Map<String, PageRect> = emptyMap()) {
     val nav = ReaderNavigator(doc)
 }
 
@@ -96,7 +104,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val meta = store.meta(id) ?: return
         val text = store.text(id) ?: return
         val doc = DocumentParser.parse(text, settings.chunkSize)
-        session = ReaderSession(meta, doc)
+        session = ReaderSession(meta, doc, store.regions(id))
         index = ReaderNavigator(doc).resumePoint(doc.chunkAt(meta.position))
         playing = false
         finished = false
@@ -151,6 +159,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             index = 0 // read to the end: start over
         } else if (s.doc.chunks[index].isStop) {
             index = s.nav.next(index) // "続きを流す" after looking at an equation
+            if (s.doc.chunks[index].isStop) {
+                rampStep = 0
+                return
+            }
         }
         rampStep = 0
         finished = false
@@ -167,7 +179,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val s = session ?: return
         if (!s.nav.atEnd(index)) index = s.nav.next(index)
         rampStep = 0
-        playing = true
+        // Two pictures in a row: stop on the next one too.
+        playing = !s.doc.chunks[index].isStop
     }
 
     fun stepChunk(delta: Int) = jump { nav -> if (delta < 0) nav.previous(index) else nav.next(index) }
@@ -228,7 +241,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Re-chunk, keeping the reading position.
             val offset = s.nav.offsetOf(index)
             val doc = DocumentParser.parse(s.doc.text, new.chunkSize)
-            session = ReaderSession(s.meta, doc)
+            session = ReaderSession(s.meta, doc, s.regions)
             index = ReaderNavigator(doc).resumePoint(doc.chunkAt(offset))
         }
     }
@@ -267,10 +280,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun saveDraftAndRead() {
         val d = draft
         if (d.text.isBlank() || d.busy) return
-        val meta = store.add(d.title, d.text, d.source)
-        draft = ImportDraft()
-        refreshLibrary()
-        open(meta.id)
+        draft = d.copy(busy = true, message = "保存しています…")
+        viewModelScope.launch {
+            val meta = store.add(d.title, d.text, d.source)
+            // Keep the original PDF when the text points into it (equations / figures shown as images).
+            val uri = d.pdfUri
+            if (uri != null && d.regions.isNotEmpty()) {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        getApplication<Application>().contentResolver.openInputStream(uri)?.use { store.savePdf(meta.id, it, d.regions) }
+                    }
+                }
+            }
+            draft = ImportDraft()
+            refreshLibrary()
+            open(meta.id)
+        }
+    }
+
+    /** The picture of an equation / figure marker of the open document, [widthPx] wide. */
+    suspend fun regionBitmap(marker: String, widthPx: Int): Bitmap? {
+        val s = session ?: return null
+        val region = s.regions[marker] ?: return null
+        return RegionRenderer.render(store.pdfFile(s.meta.id), region, widthPx)
     }
 
     /** Imports a PDF, image or text file chosen by the user or shared from another app. */
@@ -316,21 +348,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         draft = draft.copy(pageFrom = f, pageTo = t, busy = true, message = "PDFから文章を取り出しています…", pdfNeedsOcr = false)
         viewModelScope.launch {
             try {
-                val text = TextNormalizer.normalize(importers.pdfText(uri, f, t))
+                val result = importers.pdfExtract(uri, f, t) { msg ->
+                    viewModelScope.launch(Dispatchers.Main) { draft = draft.copy(message = msg) }
+                }
+                val text = TextNormalizer.normalize(result.text)
                 val noText = text.count { !it.isWhitespace() } < 20 * (t - f + 1).coerceAtMost(3)
                 draft = draft.copy(
                     text = text.trim(),
                     busy = false,
-                    pdfNeedsOcr = noText,
-                    message = if (noText) {
-                        "このPDFには文字情報がほとんどありません（スキャンした資料のようです）。ページを画像として文字認識できます。"
-                    } else {
-                        "${f}〜${t}ページを読み込みました。不要な部分は消してから読めます。"
-                    },
+                    pdfNeedsOcr = noText || result.imagePagesWithoutText.isNotEmpty(),
+                    regions = result.regions,
+                    message = extractMessage(f, t, result, noText),
                 )
             } catch (e: Exception) {
                 draft = draft.copy(busy = false, message = errorMessage(e))
             }
+        }
+    }
+
+    private fun extractMessage(f: Int, t: Int, r: PdfExtraction, noText: Boolean): String = when {
+        noText -> "このPDFには文字情報がほとんどありません（スキャンした資料のようです）。ページを画像として文字認識できます。" +
+            (r.ocrProblem?.let { "\n$it" } ?: "")
+        else -> buildString {
+            append("${f}〜${t}ページを読み込みました。")
+            val formulas = r.regions.keys.count { Markers.kindOf(it) == Markers.Kind.FORMULA }
+            val figures = r.regions.size - formulas
+            if (formulas + figures > 0) {
+                append("数式${formulas}か所・図${figures}か所は〔式〕〔図〕の印になり、読むときは元のPDFの画像で表示します。")
+            }
+            if (r.ocrPages.isNotEmpty()) append("画像だけのページ（${r.ocrPages.joinToString("・")}）は文字認識で読み取りました。")
+            if (r.imagePagesWithoutText.isNotEmpty()) append("画像だけのページ（${r.imagePagesWithoutText.joinToString("・")}）は文字認識できませんでした：${r.ocrProblem}")
+            append("不要な部分は消してから読めます。")
         }
     }
 
@@ -344,7 +392,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val text = importers.pdfOcr(uri, f, t) { page ->
                     viewModelScope.launch(Dispatchers.Main) { draft = draft.copy(message = "${page}ページ目を文字認識しています…（${f}〜${t}）") }
                 }
-                draft = draft.copy(text = TextNormalizer.normalize(text), busy = false, pdfNeedsOcr = false, message = "文字認識の結果です。誤りがあればここで直せます。")
+                draft = draft.copy(text = TextNormalizer.normalize(text), busy = false, pdfNeedsOcr = false, regions = emptyMap(), message = "文字認識の結果です。誤りがあればここで直せます。")
             } catch (e: Exception) {
                 draft = draft.copy(busy = false, message = errorMessage(e))
             }

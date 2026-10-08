@@ -42,12 +42,12 @@ class ImportersTest {
         val importers = Importers(context)
         assertEquals(2, importers.pdfPageCount(uri))
 
-        val page1 = importers.pdfText(uri, 1, 1)
+        val page1 = importers.pdfExtract(uri, 1, 1) {}.text
         val normalized = TextNormalizer.normalize(page1)
         assertTrue("page 1 was: [$page1]", normalized.contains("電磁波は電場と磁場が相互に変化しながら空間を伝わる現象である。"))
         assertTrue(!page1.contains("Ohm"))
 
-        val page2 = importers.pdfText(uri, 2, 2)
+        val page2 = importers.pdfExtract(uri, 2, 2) {}.text
         assertTrue("page 2 was: [$page2]", page2.contains("proportional to the current"))
 
         // The extracted text goes through the normal reading pipeline.
