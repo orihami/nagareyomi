@@ -3,7 +3,9 @@ package com.orihami.nagareyomi
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -47,12 +49,15 @@ class PdfFigureUiTest {
         rule.onNodeWithText("図のある資料").performClick()
         rule.onNodeWithTag(TestTags.NEXT_SENTENCE).performClick() // → the equation
         rule.waitUntil(5_000) {
-            rule.onAllNodes(hasTestTag(TestTags.REGION_IMAGE), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodes(hasContentDescription("〔式 1-1〕"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         saveScreenshot("07_equation_image.png")
+        rule.onNodeWithText("数式 — 止まって確認（タップで拡大）", useUnmergedTree = true).assertExists()
         rule.onNodeWithTag(TestTags.STOP_CONTINUE).performClick()
+        // The next part is the picture: the reader stops on it too and shows it.
         rule.waitUntil(5_000) {
-            rule.onAllNodes(hasTestTag(TestTags.REGION_IMAGE), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodes(hasText("図 — 止まって確認（タップで拡大）"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
+                rule.onAllNodes(hasContentDescription("〔図 1-1〕"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         saveScreenshot("08_figure_image.png")
         rule.onNodeWithTag(TestTags.MODE_TEXT).performClick()

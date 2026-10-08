@@ -105,3 +105,12 @@ class MarkerParsingTest {
         assertEquals(LineKind.HEADING, LineClassifier.classify("【参考資料】"))
     }
 }
+
+class LookAlikeKanjiTest {
+    @Test
+    fun radicalsAndCompatibilityIdeographsBecomeOrdinaryKanji() {
+        // ⼀ U+2F00 and ⼈ U+2F08 (Kangxi radicals) come out of some PDF fonts instead of 一 and 人.
+        assertEquals("平均値に一致する人", SymbolFix.fix("平均値に⼀致する⼈"))
+        assertEquals("平均値に一致する。", TextNormalizer.normalize("平均値に⼀致する。"))
+    }
+}

@@ -10,6 +10,8 @@ import java.text.Normalizer
  *    real Unicode symbol; pieces of tall brackets are dropped.
  *  - Equation-editor letters such as 𝑚 or 𝜎 (Mathematical Alphanumeric
  *    Symbols) become plain m / σ.
+ *  - Kanji that some PDF fonts map to look-alike radicals (U+2F00 "⼀") or
+ *    compatibility ideographs become the ordinary kanji ("一").
  *  - Any other private-use character has no meaning outside its font and is removed.
  */
 object SymbolFix {
@@ -48,7 +50,7 @@ object SymbolFix {
     }
 
     fun fix(s: String): String {
-        if (s.none { it in ''..'' || Character.isSurrogate(it) || it == '⁄' }) return s
+        if (s.none { it.code in 0xE000..0xFAFF || it.code in 0x2F00..0x2FDF || Character.isSurrogate(it) || it == '\u2044' }) return s
         val sb = StringBuilder(s.length)
         var i = 0
         while (i < s.length) {
@@ -57,7 +59,9 @@ object SymbolFix {
             when {
                 cp in 0xF020..0xF0FF -> sb.append(SYMBOL[cp - 0xF000] ?: "")
                 cp in 0xE000..0xF8FF -> Unit // other private-use glyphs: drop
-                cp in 0x1D400..0x1D7FF -> sb.append(Normalizer.normalize(String(Character.toChars(cp)), Normalizer.Form.NFKC))
+                // Look-alike kanji that PDF fonts often produce: ⼀ (Kangxi radical U+2F00) → 一, and compatibility ideographs.
+                cp in 0x2F00..0x2FDF || cp in 0xF900..0xFAFF ||
+                    cp in 0x1D400..0x1D7FF -> sb.append(Normalizer.normalize(String(Character.toChars(cp)), Normalizer.Form.NFKC))
                 cp == 0x2044 -> sb.append('/')
                 else -> sb.appendCodePoint(cp)
             }
