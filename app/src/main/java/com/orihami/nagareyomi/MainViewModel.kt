@@ -57,6 +57,9 @@ data class ImportDraft(
 /** An open document. */
 class ReaderSession(val meta: DocMeta, val doc: ParsedDocument, val regions: Map<String, PageRect> = emptyMap()) {
     val nav = ReaderNavigator(doc)
+
+    /** Makes the chosen 字/分 the real average speed for this document. */
+    val calibration: Double = Pacing.calibration(doc)
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -145,7 +148,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun currentDurationMs(): Long {
         val s = session ?: return 500
         val chunk = s.doc.chunks.getOrNull(index) ?: return 500
-        return Pacing.durationMs(chunk, settings.cpm, rampStep)
+        return Pacing.durationMs(chunk, settings.cpm, rampStep, s.calibration)
     }
 
     fun togglePlay() {

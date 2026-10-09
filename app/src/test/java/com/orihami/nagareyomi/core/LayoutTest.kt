@@ -114,3 +114,27 @@ class LookAlikeKanjiTest {
         assertEquals("平均値に一致する。", TextNormalizer.normalize("平均値に⼀致する。"))
     }
 }
+
+class SpeedCalibrationTest {
+    @Test
+    fun shownSpeedIsTheRealAverageSpeed() {
+        val doc = DocumentParser.parse(TextNormalizer.normalize(SampleText.TEXT))
+        val c = Pacing.calibration(doc)
+        assertTrue("calibration $c", c in 0.2..1.0)
+        val chars = doc.chunks.filter { !it.isStop }.sumOf { Chars.weight(it.text) }
+        for (cpm in listOf(400, 600, 1200)) {
+            val ms = doc.chunks.filter { !it.isStop }.sumOf { Pacing.durationMs(it, cpm, calibration = c) }
+            val actualCpm = chars / (ms / 60_000.0)
+            assertEquals("at $cpm", cpm.toDouble(), actualCpm, cpm * 0.08)
+        }
+    }
+
+    @Test
+    fun pausesStillMakeSentenceEndsLonger() {
+        val doc = DocumentParser.parse("電磁波は電場と磁場が相互に変化しながら空間を伝わる現象である。次の文です。")
+        val c = Pacing.calibration(doc)
+        val mid = doc.chunks.first { it.pause == Pause.NONE }
+        val end = doc.chunks.first { it.pause >= Pause.SENTENCE }
+        assertTrue(Pacing.durationMs(end, 600, calibration = c) > Pacing.durationMs(mid, 600, calibration = c))
+    }
+}

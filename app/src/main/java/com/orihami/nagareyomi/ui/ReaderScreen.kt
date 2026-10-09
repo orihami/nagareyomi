@@ -189,7 +189,7 @@ private fun LocationBar(session: ReaderSession, index: Int, cpm: Int) {
     val heading = doc.headingFor(index)?.let { doc.chunks[it.firstChunk].text }
     // Recomputing the remaining time on every chunk is wasteful for long texts.
     val remainingMin = remember(doc, index / 20, cpm) {
-        (Pacing.remainingMs(doc, index, cpm) / 60_000.0).let { if (it < 1) "1分未満" else "約${Math.round(it)}分" }
+        (Pacing.remainingMs(doc, index, cpm, session.calibration) / 60_000.0).let { if (it < 1) "1分未満" else "約${Math.round(it)}分" }
     }
     Column(Modifier.padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

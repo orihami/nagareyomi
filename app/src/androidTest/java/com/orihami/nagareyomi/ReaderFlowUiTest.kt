@@ -148,7 +148,7 @@ class ReaderFlowUiTest {
         openSample()
         rule.onNodeWithText("600字/分").assertIsDisplayed()
         rule.onNodeWithTag(TestTags.SPEED_UP).performClick()
-        rule.onNodeWithText("650字/分").assertIsDisplayed()
+        rule.onNodeWithText("700字/分").assertIsDisplayed()
     }
 
     private fun androidx.compose.ui.test.junit4.AndroidComposeTestRule<*, *>.onAllNodesWithTagExists(tag: String): Boolean =
